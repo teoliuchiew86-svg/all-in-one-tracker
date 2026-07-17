@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Outlet Coverage Tracker</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f7;
+    --panel:#ffffff;
+    --ink:#1c2b2d;
+    --sub:#5c7072;
+    --line:#e2e8e8;
+    --teal:#0f6b66;
+    --teal-dark:#0a4f4b;
+    --amber:#c9822a;
+    --danger:#b3462c;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(20,40,40,.06), 0 4px 14px rgba(20,40,40,.06);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{-webkit-text-size-adjust:100%;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{background:linear-gradient(135deg,var(--teal-dark),var(--teal));color:#fff;padding:calc(22px + env(safe-area-inset-top)) 20px 60px;}
+  header h1{margin:0 0 4px;font-size:22px;letter-spacing:.2px;}
+  header p{margin:0;font-size:13px;opacity:.85;}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 16px;}
+  .sync-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:99px;margin-top:10px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:#7be0a0;}
+  .dot.off{background:#e8a35c;}
+
+  .summary{margin-top:-42px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .mgr-card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;border-top:4px solid var(--c,#0f6b66);cursor:pointer;transition:transform .12s;}
+  .mgr-card:hover{transform:translateY(-2px);}
+  .mgr-card .num{font-size:24px;font-weight:700;line-height:1;}
+  .mgr-card .name{font-size:12.5px;color:var(--sub);margin-top:4px;font-weight:600;}
+  .mgr-card.active{outline:2px solid var(--c,#0f6b66);}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 14px;align-items:center;}
+  .toolbar input[type=text]{flex:1;min-width:160px;padding:12px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;background:#fff;}
+  select{padding:12px 10px;border:1px solid var(--line);border-radius:9px;font-size:16px;background:#fff;color:var(--ink);min-height:44px;}
+  .btn{border:none;border-radius:9px;padding:12px 14px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;}
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-primary:hover{background:var(--teal-dark);}
+  .btn-ghost{background:#fff;color:var(--teal-dark);border:1px solid var(--line);}
+  .btn-ghost:hover{background:#eef4f3;}
+  .btn-sm{padding:9px 12px;font-size:12.5px;min-height:38px;border-radius:7px;}
+
+  .count-line{font-size:12.5px;color:var(--sub);margin:0 0 10px;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;padding-bottom:calc(90px + env(safe-area-inset-bottom));}
+  .outlet-card{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;border-left:4px solid var(--c,#0f6b66);}
+  .outlet-card .code{font-size:11px;color:var(--sub);letter-spacing:.4px;text-transform:uppercase;}
+  .outlet-card .name{font-size:15px;font-weight:700;margin:2px 0 8px;}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .badge{font-size:11px;padding:3px 8px;border-radius:99px;background:#eef4f3;color:var(--teal-dark);font-weight:600;}
+  .badge.mgr{color:#fff;background:var(--c,#0f6b66);}
+  .card-actions{display:flex;gap:6px;}
+
+  .empty{text-align:center;color:var(--sub);padding:50px 10px;font-size:14px;}
+
+  .fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--teal);color:#fff;font-size:26px;border:none;box-shadow:0 6px 18px rgba(15,107,102,.4);cursor:pointer;z-index:20;}
+
+  .overlay{position:fixed;inset:0;background:rgba(20,30,30,.45);display:none;align-items:flex-start;justify-content:center;padding:calc(20px + env(safe-area-inset-top)) 14px 30px;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25);}
+  .modal h2{margin:0 0 14px;font-size:17px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:var(--sub);margin-bottom:5px;font-weight:600;}
+  .field input,.field select{width:100%;padding:11px 10px;border:1px solid var(--line);border-radius:8px;font-size:16px;}
+  .modal-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:16px;}
+  .link-btn{background:none;border:none;color:var(--teal-dark);font-size:13px;text-decoration:underline;cursor:pointer;padding:6px 2px;}
+
+  .history-item{padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .history-item:last-child{border-bottom:none;}
+  .history-item .when{color:var(--sub);font-size:11px;}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;}
+  .tab{padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;background:#eef4f3;color:var(--teal-dark);}
+  .tab.active{background:var(--teal);color:#fff;}
+  .manager-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);}
+  .swatch{width:14px;height:14px;border-radius:4px;display:inline-block;margin-right:8px;vertical-align:-2px;}
+  .danger-text{color:var(--danger);}
+  @media(max-width:480px){
+    .summary{grid-template-columns:repeat(2,1fr);}
+    .grid{grid-template-columns:1fr;}
+    .toolbar{flex-direction:column;align-items:stretch;}
+    .toolbar select{width:100%;}
+    .modal{padding:18px;}
+    .modal-actions{justify-content:stretch;}
+    .modal-actions .btn{flex:1;}
+    header h1{font-size:20px;}
+  }
+
+  /* ---- Login gate ---- */
+  #loginScreen{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--teal-dark),var(--teal));padding:20px;padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+  #loginScreen.hidden{display:none;}
+  .login-box{background:#fff;border-radius:14px;padding:28px 26px;max-width:340px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);}
+  .login-box h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
+  .login-box p{font-size:12.5px;color:var(--sub);margin:0 0 18px;}
+  .login-box input{width:100%;padding:12px 12px;border:1px solid var(--line);border-radius:8px;font-size:16px;margin-bottom:10px;}
+  .login-box .btn{width:100%;padding:13px;}
+  .login-error{color:var(--danger);font-size:12.5px;margin:-4px 0 10px;min-height:16px;}
+  #appRoot{display:none;}
+  #appRoot.show{display:block;}
+  .signout-link{position:fixed;top:calc(14px + env(safe-area-inset-top));right:16px;font-size:12px;color:#fff;opacity:.85;cursor:pointer;text-decoration:underline;z-index:30;padding:6px 4px;}
+</style>
+</head>
+<body>
+
+<!-- Login gate -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>Outlet Coverage Tracker</h1>
+    <p>Sign in to view and manage outlet assignments.</p>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" onclick="doLogin()">Sign in</button>
+  </div>
+</div>
+
+<span class="signout-link" id="signOutLink" onclick="doSignOut()" style="display:none;">Sign out</span>
+
+<div id="appRoot">
+<header>
+  <div class="wrap">
+    <h1>Outlet Coverage Tracker</h1>
+    <p>Northern Region &middot; Area Manager Assignments</p>
+    <span class="sync-pill"><span class="dot off" id="syncDot"></span><span id="syncText">Connecting…</span></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="summary" id="summary"></div>
+
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="Search outlet name, code, or PIC…">
+    <select id="filterState"><option value="">All States</option></select>
+    <select id="filterManager"><option value="">All Managers</option></select>
+    <button class="btn btn-ghost" onclick="openManagerModal()">Managers</button>
+    <button class="btn btn-ghost" onclick="openHistoryModal()">History</button>
+  </div>
+
+  <p class="count-line" id="countLine"></p>
+  <div class="grid" id="grid"></div>
+</div>
+
+<button class="fab" onclick="openOutletModal()" title="Add outlet">+</button>
+
+<!-- Outlet Modal -->
+<div class="overlay" id="outletOverlay">
+  <div class="modal">
+    <h2 id="outletModalTitle">Add Outlet</h2>
+    <input type="hidden" id="outletId">
+    <div class="field"><label>Outlet name</label><input type="text" id="outletName" placeholder="e.g. Mega Kulim Pharmacy - Bukit Mertajam"></div>
+    <div class="field"><label>Outlet code / ID</label><input type="text" id="outletCode" placeholder="e.g. MK-042"></div>
+    <div class="field"><label>PIC (Person In Charge) name</label><input type="text" id="outletPic" placeholder="e.g. Nurul Ain"></div>
+    <div class="field"><label>State</label>
+      <select id="outletState">
+        <option value="Perlis">Perlis</option>
+        <option value="Penang">Penang</option>
+        <option value="Kedah">Kedah</option>
+        <option value="__other">Other…</option>
+      </select>
+      <input type="text" id="outletStateOther" placeholder="Enter state" style="margin-top:6px;display:none;">
+    </div>
+    <div class="field"><label>Assigned area manager</label>
+      <select id="outletManager"><option value="">Unassigned</option></select>
+    </div>
+    <div class="modal-actions">
+      <button class="link-btn danger-text" id="deleteOutletBtn" onclick="deleteOutlet()" style="display:none;">Delete outlet</button>
+      <div style="flex:1;"></div>
+      <button class="btn btn-ghost" onclick="closeModal('outletOverlay')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveOutlet()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manager Modal -->
+<div class="overlay" id="managerOverlay">
+  <div class="modal">
+    <h2>Area Managers</h2>
+    <div id="managerList"></div>
+    <div class="field" style="margin-top:14px;">
+      <label id="managerFormLabel">Add new manager</label>
+      <input type="text" id="newManagerName" placeholder="Manager name">
+      <input type="color" id="newManagerColor" value="#0f6b66" style="margin-top:6px;width:60px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;">
+      <button class="link-btn" id="cancelEditManagerBtn" onclick="cancelEditManager()" style="display:none;margin-top:6px;">Cancel edit</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('managerOverlay')">Close</button>
+      <button class="btn btn-primary" id="managerSaveBtn" onclick="addManager()">Add manager</button>
+    </div>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="overlay" id="historyOverlay">
+  <div class="modal" style="max-width:480px;">
+    <h2>Reassignment History</h2>
+    <div id="historyList" style="max-height:60vh;overflow-y:auto;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('historyOverlay')">Close</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#appRoot -->
+
+<script>
+/* =========================================================
+   FIREBASE CONFIG — reuse the SAME project as CME Tracker /
+   Follow-Through. Paste that config object below.
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDogkhS5LJP4yCPU5gPmLMIVBNqohtdxs4",
+  authDomain: "area-manager-and-pic-allocate.firebaseapp.com",
+  projectId: "area-manager-and-pic-allocate",
+  storageBucket: "area-manager-and-pic-allocate.firebasestorage.app",
+  messagingSenderId: "22636397296",
+  appId: "1:22636397296:web:0c1ce4e53f5e0bf0223835"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// Firestore collections (namespaced so they don't collide with your other apps)
+const outletsCol  = db.collection('coverage_outlets');
+const managersCol = db.collection('coverage_managers');
+const historyCol  = db.collection('coverage_history');
+
+let outlets = [];
+let managers = [];
+let history = [];
+let activeManagerFilter = '';
+let unsubOutlets = null, unsubManagers = null, unsubHistory = null;
+
+const managerColorFallback = ['#0f6b66','#c9822a','#3d6ba6','#7a4fa3','#b3462c','#4c8c3f'];
+
+function setSync(ok){
+  document.getElementById('syncDot').classList.toggle('off', !ok);
+  document.getElementById('syncText').textContent = ok ? 'Synced' : 'Offline / connecting…';
+}
+
+// ---------- Auth gate ----------
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appRoot').classList.add('show');
+    document.getElementById('signOutLink').style.display = 'inline';
+    startListeners();
+  } else {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appRoot').classList.remove('show');
+    document.getElementById('signOutLink').style.display = 'none';
+    stopListeners();
+  }
+});
+
+function doLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!email || !pw){ errEl.textContent = 'Enter your email and password.'; return; }
+  auth.signInWithEmailAndPassword(email, pw).catch(e=>{
+    errEl.textContent = 'Sign-in failed — check your email/password.';
+    console.error(e);
+  });
+}
+function doSignOut(){ auth.signOut(); }
+
+// allow Enter key to submit login
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Enter' && !document.getElementById('loginScreen').classList.contains('hidden')){
+    doLogin();
+  }
+});
+
+// ---------- Realtime listeners (only run once signed in) ----------
+function startListeners(){
+  if(unsubOutlets) return; // already running
+  unsubOutlets = outletsCol.onSnapshot(snap=>{
+    outlets = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    setSync(true);
+    renderAll();
+  }, err=>{ console.error(err); setSync(false); });
+
+  unsubManagers = managersCol.onSnapshot(snap=>{
+    managers = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderAll();
+  }, err=>console.error(err));
+
+  unsubHistory = historyCol.orderBy('timestamp','desc').limit(200).onSnapshot(snap=>{
+    history = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  }, err=>console.error(err));
+}
+function stopListeners(){
+  if(unsubOutlets){ unsubOutlets(); unsubOutlets = null; }
+  if(unsubManagers){ unsubManagers(); unsubManagers = null; }
+  if(unsubHistory){ unsubHistory(); unsubHistory = null; }
+  outlets = []; managers = []; history = [];
+}
+
+function managerById(id){ return managers.find(m=>m.id===id); }
+function colorFor(mgr){ return mgr ? (mgr.color || '#0f6b66') : '#9aa8a8'; }
+
+// ---------- Rendering ----------
+function renderAll(){
+  renderSummary();
+  renderFilters();
+  renderGrid();
+}
+
+function renderSummary(){
+  const el = document.getElementById('summary');
+  const allCount = outlets.length;
+  let html = `<div class="mgr-card ${activeManagerFilter===''?'active':''}" style="--c:#0f6b66" onclick="setManagerFilter('')">
+      <div class="num">${allCount}</div><div class="name">All Outlets</div></div>`;
+  managers.forEach(m=>{
+    const n = outlets.filter(o=>o.managerId===m.id).length;
+    html += `<div class="mgr-card ${activeManagerFilter===m.id?'active':''}" style="--c:${colorFor(m)}" onclick="setManagerFilter('${m.id}')">
+      <div class="num">${n}</div><div class="name">${escapeHtml(m.name)}</div></div>`;
+  });
+  const unassigned = outlets.filter(o=>!o.managerId).length;
+  if(unassigned>0){
+    html += `<div class="mgr-card ${activeManagerFilter==='__unassigned'?'active':''}" style="--c:#b3462c" onclick="setManagerFilter('__unassigned')">
+      <div class="num">${unassigned}</div><div class="name">Unassigned</div></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function setManagerFilter(id){
+  activeManagerFilter = id;
+  document.getElementById('filterManager').value = id;
+  renderAll();
+}
+
+function renderFilters(){
+  const stateSel = document.getElementById('filterState');
+  const states = [...new Set(outlets.map(o=>o.state).filter(Boolean))].sort();
+  const curState = stateSel.value;
+  stateSel.innerHTML = '<option value="">All States</option>' + states.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  stateSel.value = curState;
+
+  const mgrSel = document.getElementById('filterManager');
+  const curMgr = mgrSel.value;
+  mgrSel.innerHTML = '<option value="">All Managers</option>' + managers.map(m=>`<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('') + '<option value="__unassigned">Unassigned</option>';
+  mgrSel.value = curMgr || activeManagerFilter;
+
+  const outletMgrSel = document.getElementById('outletManager');
+  outletMgrSel.innerHTML = '<option value="">Unassigned</option>' + managers.map(m=>`<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+}
+
+function renderGrid(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const stateF = document.getElementById('filterState').value;
+  const mgrF = document.getElementById('filterManager').value || activeManagerFilter;
+
+  let list = outlets.filter(o=>{
+    if(q && !( (o.name||'').toLowerCase().includes(q) || (o.code||'').toLowerCase().includes(q) || (o.pic||'').toLowerCase().includes(q) )) return false;
+    if(stateF && o.state !== stateF) return false;
+    if(mgrF === '__unassigned' && o.managerId) return false;
+    if(mgrF && mgrF !== '__unassigned' && o.managerId !== mgrF) return false;
+    return true;
+  }).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  document.getElementById('countLine').textContent = `${list.length} of ${outlets.length} outlets`;
+
+  const grid = document.getElementById('grid');
+  if(list.length===0){
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">No outlets match. Tap + to add one, or adjust filters.</div>`;
+    return;
+  }
+  grid.innerHTML = list.map(o=>{
+    const mgr = managerById(o.managerId);
+    return `<div class="outlet-card" style="--c:${colorFor(mgr)}">
+      <div class="code">${escapeHtml(o.code||'—')}</div>
+      <div class="name">${escapeHtml(o.name||'Untitled outlet')}</div>
+      ${o.pic ? `<div style="font-size:12.5px;color:var(--sub);margin:-4px 0 8px;">PIC: <strong style="color:var(--ink);">${escapeHtml(o.pic)}</strong></div>` : ''}
+      <div class="badges">
+        ${o.state ? `<span class="badge">${escapeHtml(o.state)}</span>` : ''}
+        <span class="badge mgr" style="--c:${colorFor(mgr)}">${mgr ? escapeHtml(mgr.name) : 'Unassigned'}</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openOutletModal('${o.id}')">Edit</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Outlet modal ----------
+function openOutletModal(id){
+  renderFilters();
+  document.getElementById('outletId').value = id || '';
+  document.getElementById('deleteOutletBtn').style.display = id ? 'inline' : 'none';
+  const stateOtherInput = document.getElementById('outletStateOther');
+  stateOtherInput.style.display = 'none';
+  if(id){
+    const o = outlets.find(x=>x.id===id);
+    document.getElementById('outletModalTitle').textContent = 'Edit Outlet';
+    document.getElementById('outletName').value = o.name || '';
+    document.getElementById('outletCode').value = o.code || '';
+    document.getElementById('outletPic').value = o.pic || '';
+    const stateSel = document.getElementById('outletState');
+    const known = ['Perlis','Penang','Kedah'];
+    if(o.state && !known.includes(o.state)){
+      stateSel.value = '__other';
+      stateOtherInput.style.display = 'block';
+      stateOtherInput.value = o.state;
+    } else {
+      stateSel.value = o.state || 'Perlis';
+    }
+    document.getElementById('outletManager').value = o.managerId || '';
+  } else {
+    document.getElementById('outletModalTitle').textContent = 'Add Outlet';
+    document.getElementById('outletName').value = '';
+    document.getElementById('outletCode').value = '';
+    document.getElementById('outletPic').value = '';
+    document.getElementById('outletState').value = 'Perlis';
+    document.getElementById('outletManager').value = '';
+  }
+  document.getElementById('outletOverlay').classList.add('show');
+}
+
+document.getElementById('outletState').addEventListener('change', e=>{
+  document.getElementById('outletStateOther').style.display = e.target.value==='__other' ? 'block' : 'none';
+});
+
+async function saveOutlet(){
+  const id = document.getElementById('outletId').value;
+  const name = document.getElementById('outletName').value.trim();
+  const code = document.getElementById('outletCode').value.trim();
+  const pic = document.getElementById('outletPic').value.trim();
+  let state = document.getElementById('outletState').value;
+  if(state==='__other') state = document.getElementById('outletStateOther').value.trim();
+  const managerId = document.getElementById('outletManager').value;
+
+  if(!name){ alert('Please enter the outlet name.'); return; }
+
+  const prev = id ? outlets.find(o=>o.id===id) : null;
+  const data = { name, code, pic, state, managerId: managerId || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+  try{
+    if(id){
+      await outletsCol.doc(id).update(data);
+    } else {
+      await outletsCol.add({...data, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    }
+    // log history if manager changed
+    if(!prev || prev.managerId !== (managerId || null)){
+      const fromM = prev ? managerById(prev.managerId) : null;
+      const toM = managerById(managerId);
+      await historyCol.add({
+        outletId: id || null,
+        outletName: name,
+        fromManager: fromM ? fromM.name : 'Unassigned',
+        toManager: toM ? toM.name : 'Unassigned',
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    closeModal('outletOverlay');
+  }catch(e){
+    alert('Could not save: ' + e.message);
+  }
+}
+
+async function deleteOutlet(){
+  const id = document.getElementById('outletId').value;
+  if(!id) return;
+  if(!confirm('Delete this outlet? This cannot be undone.')) return;
+  try{
+    await outletsCol.doc(id).delete();
+    closeModal('outletOverlay');
+  }catch(e){ alert('Could not delete: ' + e.message); }
+}
+
+// ---------- Manager modal ----------
+function openManagerModal(){
+  cancelEditManager();
+  renderManagerList();
+  document.getElementById('managerOverlay').classList.add('show');
+}
+function renderManagerList(){
+  const el = document.getElementById('managerList');
+  if(managers.length===0){ el.innerHTML = '<p style="color:var(--sub);font-size:13px;">No managers yet — add one below.</p>'; return; }
+  el.innerHTML = managers.map(m=>{
+    const n = outlets.filter(o=>o.managerId===m.id).length;
+    return `<div class="manager-row">
+      <span><span class="swatch" style="background:${m.color||'#0f6b66'}"></span>${escapeHtml(m.name)} <span style="color:var(--sub);font-size:12px;">(${n} outlets)</span></span>
+      <span>
+        <button class="link-btn" style="margin-right:10px;" onclick="startEditManager('${m.id}')">Edit</button>
+        <button class="link-btn danger-text" onclick="removeManager('${m.id}')">Remove</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+let editingManagerId = null;
+
+function startEditManager(id){
+  const m = managerById(id);
+  if(!m) return;
+  editingManagerId = id;
+  document.getElementById('newManagerName').value = m.name || '';
+  document.getElementById('newManagerColor').value = m.color || '#0f6b66';
+  document.getElementById('managerFormLabel').textContent = 'Edit manager';
+  document.getElementById('managerSaveBtn').textContent = 'Update manager';
+  document.getElementById('cancelEditManagerBtn').style.display = 'inline';
+  document.getElementById('newManagerName').focus();
+}
+
+function cancelEditManager(){
+  editingManagerId = null;
+  document.getElementById('newManagerName').value = '';
+  document.getElementById('newManagerColor').value = '#0f6b66';
+  document.getElementById('managerFormLabel').textContent = 'Add new manager';
+  document.getElementById('managerSaveBtn').textContent = 'Add manager';
+  document.getElementById('cancelEditManagerBtn').style.display = 'none';
+}
+
+async function addManager(){
+  const name = document.getElementById('newManagerName').value.trim();
+  const color = document.getElementById('newManagerColor').value || managerColorFallback[managers.length % managerColorFallback.length];
+  if(!name){ alert('Enter a manager name.'); return; }
+  if(editingManagerId){
+    await managersCol.doc(editingManagerId).update({name, color});
+    cancelEditManager();
+  } else {
+    await managersCol.add({name, color});
+    document.getElementById('newManagerName').value = '';
+  }
+  renderManagerList();
+}
+async function removeManager(id){
+  const inUse = outlets.filter(o=>o.managerId===id).length;
+  if(inUse>0 && !confirm(`This manager is assigned to ${inUse} outlet(s), which will become Unassigned. Continue?`)) return;
+  const batchUpdates = outlets.filter(o=>o.managerId===id).map(o=>outletsCol.doc(o.id).update({managerId:null}));
+  await Promise.all(batchUpdates);
+  await managersCol.doc(id).delete();
+  if(editingManagerId === id) cancelEditManager();
+  renderManagerList();
+}
+
+// ---------- History modal ----------
+function openHistoryModal(){
+  renderHistoryList();
+  document.getElementById('historyOverlay').classList.add('show');
+}
+function renderHistoryList(){
+  const el = document.getElementById('historyList');
+  if(history.length===0){ el.innerHTML = '<p style="color:var(--sub);font-size:13px;">No reassignments logged yet.</p>'; return; }
+  el.innerHTML = history.map(h=>{
+    const when = h.timestamp && h.timestamp.toDate ? h.timestamp.toDate().toLocaleString() : '';
+    return `<div class="history-item">
+      <strong>${escapeHtml(h.outletName||'Outlet')}</strong>: ${escapeHtml(h.fromManager)} → ${escapeHtml(h.toManager)}
+      <div class="when">${when}</div>
+    </div>`;
+  }).join('');
+}
+
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+// filter live listeners
+document.getElementById('search').addEventListener('input', renderGrid);
+document.getElementById('filterState').addEventListener('change', renderGrid);
+document.getElementById('filterManager').addEventListener('change', e=>{ activeManagerFilter = e.target.value; renderGrid(); });
+
+// close modal on backdrop click
+document.querySelectorAll('.overlay').forEach(ov=>{
+  ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('show'); });
+});
+</script>
+</body>
+</html>
