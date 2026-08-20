@@ -51,16 +51,18 @@
   <button id="btn-followup" class="active" onclick="showFrame('followup')">Follow-Up Tracker</button>
   <button id="btn-outlet" onclick="showFrame('outlet')">Outlet Coverage Tracker</button>
   <button id="btn-device" onclick="showFrame('device')">Health Screening Device</button>
+  <button id="btn-cme" onclick="showFrame('cme')">CME Tracker</button>
 </div>
 
 <div class="frames">
   <iframe id="frame-followup" class="active" src="follow-up-tracker.html"></iframe>
   <iframe id="frame-outlet" src="outlet-coverage-tracker.html"></iframe>
   <iframe id="frame-device" src="https://teoliuchiew86-svg.github.io/Outlet-Device/"></iframe>
+  <iframe id="frame-cme" src="cme-tracker.html"></iframe>
 </div>
 
 <script>
-const frames = ['followup','outlet','device'];
+const frames = ['followup','outlet','device','cme'];
 function showFrame(name){
   frames.forEach(f=>{
     document.getElementById('frame-'+f).classList.toggle('active', f===name);
